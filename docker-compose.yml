@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: apartment-hunter-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: apartment_hunter
+      POSTGRES_PASSWORD: apartment_hunter_dev
+      POSTGRES_DB: apartment_hunter
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apartment_hunter -d apartment_hunter"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  postgres-data:

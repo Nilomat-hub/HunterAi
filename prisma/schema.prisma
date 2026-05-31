@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Portal {
+  IMMOSCOUT24
+  IMMOWELT
+  IMMONET
+  MEINESTADT
+  IMMOBILIE1
+  IMMOMIO
+}
+
+enum ListingStatus {
+  NEW
+  NOTIFIED
+  IGNORED
+  DUPLICATE
+  APPLIED
+  ERROR
+}
+
+enum ApplicationStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PREPARING
+  READY_TO_SUBMIT
+  SENT
+  FAILED
+  IGNORED
+}
+
+enum ContactMethod {
+  FORM
+  EMAIL
+  EXTERNAL
+}
+
+enum TelegramLogType {
+  LISTING_FOUND
+  APPLICATION_SENT
+  REPLY_RECEIVED
+  ERROR
+  ACTION
+}
+
+model User {
+  id              String          @id @default(cuid())
+  email           String          @unique
+  passwordHash    String
+  firstName       String?
+  lastName        String?
+  age             Int?
+  occupation      String?
+  dualStudyProgram String?
+  employer        String?
+  netIncome       Int?
+  monthlyAvailableBudget Int?
+  guarantorAvailable Boolean @default(false)
+  currentHousingSituation String?
+  moveReason      String?
+  locationBenefit String?
+  householdSize   Int?
+  pets            String?
+  moveInDate      DateTime?
+  personalBio     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  searchProfiles  SearchProfile[]
+  portalAccounts  PortalAccount[]
+  listings        Listing[]
+  applications    Application[]
+  messages        Message[]
+  telegramLogs    TelegramLog[]
+  settings        Settings?
+}
+
+model SearchProfile {
+  id              String    @id @default(cuid())
+  userId          String
+  name            String
+  city            String
+  districts       String[]
+  maxPrice        Int
+  minSize         Int
+  rooms           Float
+  petsAllowed     Boolean   @default(false)
+  keywords        String[]
+  excludedWords   String[]
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listings        Listing[]
+}
+
+model PortalAccount {
+  id                    String   @id @default(cuid())
+  userId                String
+  portal                Portal
+  usernameEncrypted     String
+  passwordEncrypted     String
+  cookiesEncrypted      String?
+  sessionDataEncrypted  String?
+  lastLoginAt           DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, portal])
+}
+
+model Listing {
+  id                 String            @id @default(cuid())
+  userId             String
+  searchProfileId    String?
+  portal             Portal
+  url                String
+  normalizedUrl      String
+  title              String
+  price              Int?
+  size               Float?
+  rooms              Float?
+  address            String?
+  district           String?
+  provider           String?
+  images             String[]
+  description        String?
+  publishedAt        DateTime?
+  score              Int               @default(0)
+  scoreLabel         String            @default("Niedrige Priorität")
+  duplicateOfId      String?
+  status             ListingStatus     @default(NEW)
+  contactMethod      ContactMethod     @default(FORM)
+  contactEmail       String?
+  applicationUrl     String?
+  rawData            Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  searchProfile      SearchProfile?    @relation(fields: [searchProfileId], references: [id], onDelete: SetNull)
+  duplicateOf        Listing?          @relation("ListingDuplicates", fields: [duplicateOfId], references: [id])
+  duplicates         Listing[]         @relation("ListingDuplicates")
+  applications       Application[]
+  messages           Message[]
+
+  @@unique([userId, normalizedUrl])
+  @@index([userId, status])
+  @@index([address, title, provider])
+}
+
+model Application {
+  id              String             @id @default(cuid())
+  userId          String
+  listingId       String
+  status          ApplicationStatus  @default(DRAFT)
+  message         String
+  editedMessage   String?
+  sentAt          DateTime?
+  errorMessage    String?
+  externalStatus  String?
+  externalPayload  Json?
+  lastPreparedAt  DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing         Listing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  userId      String
+  listingId   String?
+  direction   String
+  subject     String?
+  body        String
+  from        String?
+  to          String?
+  createdAt   DateTime @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing     Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+}
+
+model TelegramLog {
+  id           String          @id @default(cuid())
+  userId       String
+  type         TelegramLogType
+  message      String
+  payload      Json?
+  telegramId   String?
+  createdAt    DateTime        @default(now())
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  autoApplyEnabled    Boolean  @default(false)
+  autoApplyMinScore   Int      @default(90)
+  maxPerHour          Int      @default(10)
+  maxPerDay           Int      @default(50)
+  schedulerEnabled    Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

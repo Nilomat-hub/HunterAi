@@ -1,0 +1,17 @@
+node_modules
+.tools
+.npm-cache
+.docker-config
+.idea
+.playwright-browsers
+.playwright-runtime
+.next
+.next-build
+.next-app
+.next-local
+.vercel
+coverage
+.env
+.env*.local
+playwright/.cache
+*.log
