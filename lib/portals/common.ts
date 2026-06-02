@@ -122,8 +122,36 @@ function extractListingDetails(text: string, links: Array<{ text: string; href: 
       deposit: findEuroByLabels(text, ["Kaution", "Mietsicherheit"])
     },
     features: detectFeatures(text),
-    contactHints: detectContactHints(text, links)
+    contactHints: detectContactHints(text, links),
+    contactPerson: extractContactPerson(text)
   };
+}
+
+function extractContactPerson(text: string) {
+  const normalized = normalizeWhitespace(text);
+  const patterns = [
+    /\b(Frau|Herr)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+){0,3})\b/,
+    /\bAnsprechpartner(?:in)?[:\s]+(Frau|Herr)?\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+){0,3})\b/i,
+    /\bKontakt(?:person)?[:\s]+(Frau|Herr)?\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+){0,3})\b/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (!match) continue;
+
+    const salutation = match[1]?.trim();
+    const name = match[2]?.trim();
+    if (name && isPlausibleContactName(name)) {
+      return { salutation, name };
+    }
+  }
+
+  return undefined;
+}
+
+function isPlausibleContactName(name: string) {
+  const blocked = ["Immobilien", "Vertrieb", "GmbH", "Details", "Anbieter", "Kontaktieren"];
+  return name.length <= 80 && !blocked.some((word) => name.includes(word));
 }
 
 function detectFeatures(text: string) {

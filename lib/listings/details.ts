@@ -10,6 +10,10 @@ type ListingDetails = {
   };
   features?: Record<string, boolean>;
   contactHints?: Record<string, boolean>;
+  contactPerson?: {
+    name?: string;
+    salutation?: string;
+  };
 };
 
 const featureLabels: Record<string, string> = {

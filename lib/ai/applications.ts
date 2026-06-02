@@ -1,11 +1,14 @@
 import OpenAI from "openai";
 import type { Listing, User } from "@prisma/client";
+import { getListingDetails } from "@/lib/listings/details";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || "missing-key"
 });
 
 export async function generateApplicationMessage(user: User, listing: Listing) {
+  const contactPerson = getListingDetails(listing.rawData)?.contactPerson;
+
   if (!process.env.OPENAI_API_KEY) {
     return fallbackMessage(user, listing);
   }
@@ -18,7 +21,7 @@ export async function generateApplicationMessage(user: User, listing: Listing) {
         {
           role: "system",
           content:
-            "Du schreibst kurze, natürliche und professionelle Wohnungsbewerbungen auf Deutsch. Zitiere den Inseratstitel nicht wörtlich. Nutze nur robuste Fakten wie Stadtteil, Lage, Größe, Zimmer und Ausstattung. Keine Floskeln, kein übertriebener Ton, maximal 170 Wörter."
+            "Du schreibst kurze, natürliche und professionelle Wohnungsbewerbungen auf Deutsch. Wenn eine Kontaktperson vorhanden ist, sprich sie direkt mit Nachnamen an, z.B. 'Sehr geehrte Frau Krohn,'. Zitiere den Inseratstitel nicht wörtlich. Nutze nur robuste Fakten wie Stadtteil, Lage, Größe, Zimmer und Ausstattung. Keine Floskeln, kein übertriebener Ton, maximal 170 Wörter."
         },
         {
           role: "user",
@@ -47,7 +50,8 @@ export async function generateApplicationMessage(user: User, listing: Listing) {
               zimmer: listing.rooms,
               adresse: listing.address,
               stadtteil: listing.district,
-              beschreibung: listing.description
+              beschreibung: listing.description,
+              kontaktperson: contactPerson
             }
           })
         }
@@ -62,6 +66,7 @@ export async function generateApplicationMessage(user: User, listing: Listing) {
 }
 
 export function fallbackMessage(user: User, listing: Listing) {
+  const greeting = buildGreeting(listing);
   const intro = buildIntro(user);
   const situation = buildSituation(user);
   const location = buildLocationSentence(user, listing);
@@ -69,7 +74,7 @@ export function fallbackMessage(user: User, listing: Listing) {
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ");
 
   return [
-    "Guten Tag,",
+    greeting,
     "",
     "die Wohnung hat direkt mein Interesse geweckt, weil sie gut zu meiner aktuellen Lebenssituation passt.",
     intro,
@@ -84,6 +89,19 @@ export function fallbackMessage(user: User, listing: Listing) {
     .filter((line) => line !== undefined)
     .join("\n\n")
     .replace(/\n{3,}/g, "\n\n");
+}
+
+function buildGreeting(listing: Listing) {
+  const contactPerson = getListingDetails(listing.rawData)?.contactPerson;
+  if (!contactPerson?.name) return "Guten Tag,";
+
+  const salutation = contactPerson.salutation;
+  if (salutation === "Frau" || salutation === "Herr") {
+    const lastName = contactPerson.name.split(/\s+/).at(-1);
+    return lastName ? `Sehr geehrte${salutation === "Herr" ? "r" : ""} ${salutation} ${lastName},` : "Guten Tag,";
+  }
+
+  return `Guten Tag ${contactPerson.name},`;
 }
 
 export function safeListingTitle(title?: string | null) {
