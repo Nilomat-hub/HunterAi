@@ -140,13 +140,21 @@ function extractContactPerson(text: string) {
     if (!match) continue;
 
     const salutation = match[1]?.trim();
-    const name = match[2]?.trim();
+    const name = cleanContactName(match[2]);
     if (name && isPlausibleContactName(name)) {
       return { salutation, name };
     }
   }
 
   return undefined;
+}
+
+function cleanContactName(value?: string) {
+  if (!value) return undefined;
+  return value
+    .replace(/\b(?:Wentzel\s+Dr|Vertriebs|Immobilien|GmbH|AG|KG|Details|Anbieter|Kontaktieren)\b.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isPlausibleContactName(name: string) {
