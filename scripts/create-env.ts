@@ -9,7 +9,7 @@ if (fs.existsSync(envPath)) {
   process.exit(0);
 }
 
-const schedulerSecret = crypto.randomBytes(32).toString("base64url");
+const cronSecret = crypto.randomBytes(32).toString("base64url");
 const nextAuthSecret = crypto.randomBytes(32).toString("base64url");
 const encryptionKey = crypto.randomBytes(32).toString("base64");
 
@@ -17,12 +17,14 @@ const content = `DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DATABASE?ssl
 NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="${nextAuthSecret}"
 OPENAI_API_KEY=""
+OPENAI_MODEL="gpt-4o-mini"
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
-SCHEDULER_SECRET="${schedulerSecret}"
+CRON_SECRET="${cronSecret}"
 ENCRYPTION_KEY="${encryptionKey}"
 INITIAL_USER_EMAIL="you@example.com"
 INITIAL_USER_PASSWORD="change-me-before-deploy"
+APP_URL="http://localhost:3000"
 `;
 
 fs.writeFileSync(envPath, content, { encoding: "utf8", flag: "wx" });

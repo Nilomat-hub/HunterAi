@@ -46,6 +46,21 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             {session?.user?.email}
           </div>
         </header>
+        <nav className="flex gap-1 overflow-x-auto border-b bg-white px-3 py-2 lg:hidden">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm hover:bg-secondary"
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
         <main className="mx-auto max-w-7xl px-4 py-6 lg:px-8">{children}</main>
       </div>
     </div>

@@ -43,7 +43,12 @@ export default async function ListingsPage() {
                 return (
                   <tr key={listing.id} className="border-b last:border-0">
                     <td className="py-3">
-                      <Link href={listing.url} target="_blank" className="inline-flex items-center gap-2 font-medium">
+                      <Link
+                        href={listing.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 font-medium"
+                      >
                         {listing.title}
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
@@ -79,7 +84,12 @@ export default async function ListingsPage() {
                     </td>
                     <td>
                       {listing.contactMethod === "EXTERNAL" && listing.applicationUrl ? (
-                        <Link href={listing.applicationUrl} target="_blank" className="text-primary">
+                        <Link
+                          href={listing.applicationUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary"
+                        >
                           {contactMethodLabels[listing.contactMethod]}
                         </Link>
                       ) : listing.contactMethod === "EMAIL" ? (

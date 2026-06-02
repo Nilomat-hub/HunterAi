@@ -18,12 +18,14 @@ In Vercel als Environment Variables setzen:
 - `NEXTAUTH_URL`
 - `NEXTAUTH_SECRET`
 - `OPENAI_API_KEY`
+- `OPENAI_MODEL`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
-- `SCHEDULER_SECRET`
+- `CRON_SECRET`
 - `ENCRYPTION_KEY`
 - `INITIAL_USER_EMAIL`
 - `INITIAL_USER_PASSWORD`
+- `APP_URL`
 
 Portal-Zugangsdaten wie Immomio gehoeren nicht in Vercel-Env. Die werden verschluesselt in der App gespeichert.
 
@@ -44,14 +46,15 @@ npm run db:seed
 
 Lokal nutzt der Wrapper `npm-local.cmd` automatisch `.next-local`, damit OneDrive keine kaputten Next-Build-Artefakte produziert. Auf Vercel wird ohne `NEXT_DIST_DIR` der normale `.next`-Ordner genutzt.
 
-## GitHub Actions Scheduler
+## Vercel Cron Scheduler
 
-Repository Secrets in GitHub setzen:
+Der Scheduler laeuft ueber `vercel.json` alle 30 Minuten per Vercel Cron:
 
-- `APP_URL`, zum Beispiel `https://deine-app.vercel.app`
-- `SCHEDULER_SECRET`, identisch mit Vercel
+- Pfad: `/api/scheduler/run`
+- Methode: `GET`
+- Secret: `CRON_SECRET` als Vercel Environment Variable
 
-Der Workflow `.github/workflows/scheduler.yml` ruft alle 10 Minuten `/api/scheduler/run` auf.
+Der GitHub Workflow `.github/workflows/scheduler.yml` bleibt nur als manueller Fallback per `workflow_dispatch` erhalten. Falls du ihn nutzt, setze in GitHub `APP_URL` und `CRON_SECRET`.
 
 ## WSL-Startbefehle
 

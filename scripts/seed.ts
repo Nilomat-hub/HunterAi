@@ -29,11 +29,15 @@ async function main() {
     where: { email },
     create: {
       email,
+      contactEmail: email,
+      salutation: "Herr",
       passwordHash,
       ...defaultProfile,
       settings: { create: {} }
     },
     update: {
+      contactEmail: email,
+      salutation: "Herr",
       passwordHash,
       ...defaultProfile
     }

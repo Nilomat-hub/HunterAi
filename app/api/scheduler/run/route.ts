@@ -2,11 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { runScheduledScan } from "@/lib/listings/pipeline";
 
-export async function POST(request: Request) {
-  const expected = process.env.SCHEDULER_SECRET;
+export const maxDuration = 300;
+
+function isAuthorized(request: Request) {
+  const expected = process.env.CRON_SECRET ?? process.env.SCHEDULER_SECRET;
   const actual = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
 
-  if (!expected || actual !== expected) {
+  return Boolean(expected && actual === expected);
+}
+
+async function runScheduler(request: Request) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -30,4 +36,12 @@ export async function POST(request: Request) {
     ok: true,
     processed: results.length
   });
+}
+
+export async function GET(request: Request) {
+  return runScheduler(request);
+}
+
+export async function POST(request: Request) {
+  return runScheduler(request);
 }

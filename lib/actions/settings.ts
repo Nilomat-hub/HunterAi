@@ -9,6 +9,9 @@ import { prisma } from "@/lib/db/prisma";
 const profileSchema = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
+  contactEmail: z.string().email().optional().or(z.literal("").transform(() => undefined)),
+  phone: z.string().optional(),
+  salutation: z.string().optional(),
   age: z.coerce.number().int().positive().optional().or(z.literal("").transform(() => undefined)),
   occupation: z.string().optional(),
   dualStudyProgram: z.string().optional(),
@@ -35,16 +38,20 @@ const settingsSchema = z.object({
 
 export async function saveProfile(formData: FormData) {
   const userId = await requireUserId();
-  const parsed = profileSchema.parse({
+  const parsed = profileSchema.safeParse({
     ...Object.fromEntries(formData),
     guarantorAvailable: formData.get("guarantorAvailable") === "on"
   });
 
+  if (!parsed.success) {
+    redirect("/dashboard/settings?error=profile");
+  }
+
   await prisma.user.update({
     where: { id: userId },
     data: {
-      ...parsed,
-      moveInDate: parsed.moveInDate ? new Date(parsed.moveInDate) : null
+      ...parsed.data,
+      moveInDate: parsed.data.moveInDate ? new Date(parsed.data.moveInDate) : null
     }
   });
 
@@ -54,7 +61,7 @@ export async function saveProfile(formData: FormData) {
 
 export async function saveSettings(formData: FormData) {
   const userId = await requireUserId();
-  const parsed = settingsSchema.parse({
+  const parsed = settingsSchema.safeParse({
     schedulerEnabled: formData.get("schedulerEnabled") === "on",
     autoApplyEnabled: formData.get("autoApplyEnabled") === "on",
     autoApplyMinScore: formData.get("autoApplyMinScore"),
@@ -62,10 +69,14 @@ export async function saveSettings(formData: FormData) {
     maxPerDay: formData.get("maxPerDay")
   });
 
+  if (!parsed.success) {
+    redirect("/dashboard/settings?error=settings");
+  }
+
   await prisma.settings.upsert({
     where: { userId },
-    create: { userId, ...parsed },
-    update: parsed
+    create: { userId, ...parsed.data },
+    update: parsed.data
   });
 
   revalidatePath("/dashboard/settings");

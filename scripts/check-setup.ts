@@ -6,11 +6,12 @@ const required = [
   "DATABASE_URL",
   "NEXTAUTH_URL",
   "NEXTAUTH_SECRET",
-  "SCHEDULER_SECRET",
   "ENCRYPTION_KEY",
   "INITIAL_USER_EMAIL",
   "INITIAL_USER_PASSWORD"
 ];
+
+const oneOfRequired = [["CRON_SECRET", "SCHEDULER_SECRET"]];
 
 async function main() {
   let hasError = false;
@@ -19,6 +20,12 @@ async function main() {
     const value = process.env[key];
     const ok = Boolean(value) && !String(value).includes("USER:PASSWORD") && !String(value).includes("change-me");
     console.log(`${ok ? "OK" : "FEHLT"} ${key}`);
+    if (!ok) hasError = true;
+  }
+
+  for (const group of oneOfRequired) {
+    const ok = group.some((key) => Boolean(process.env[key]));
+    console.log(`${ok ? "OK" : "FEHLT"} ${group.join(" oder ")}`);
     if (!ok) hasError = true;
   }
 

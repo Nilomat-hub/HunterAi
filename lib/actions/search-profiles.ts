@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUserId } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
@@ -19,23 +20,27 @@ const schema = z.object({
 
 export async function createSearchProfile(formData: FormData) {
   const userId = await requireUserId();
-  const parsed = schema.parse({
+  const parsed = schema.safeParse({
     ...Object.fromEntries(formData),
     petsAllowed: formData.get("petsAllowed") === "on"
   });
 
+  if (!parsed.success) {
+    redirect("/dashboard/search-profiles?error=validation");
+  }
+
   await prisma.searchProfile.create({
     data: {
       userId,
-      name: parsed.name,
-      city: parsed.city,
-      districts: splitList(parsed.districts),
-      maxPrice: parsed.maxPrice,
-      minSize: parsed.minSize,
-      rooms: parsed.rooms,
-      petsAllowed: parsed.petsAllowed,
-      keywords: splitList(parsed.keywords),
-      excludedWords: splitList(parsed.excludedWords)
+      name: parsed.data.name,
+      city: parsed.data.city,
+      districts: splitList(parsed.data.districts),
+      maxPrice: parsed.data.maxPrice,
+      minSize: parsed.data.minSize,
+      rooms: parsed.data.rooms,
+      petsAllowed: parsed.data.petsAllowed,
+      keywords: splitList(parsed.data.keywords),
+      excludedWords: splitList(parsed.data.excludedWords)
     }
   });
 

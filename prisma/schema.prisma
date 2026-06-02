@@ -56,6 +56,9 @@ model User {
   passwordHash    String
   firstName       String?
   lastName        String?
+  contactEmail    String?
+  phone           String?
+  salutation      String?
   age             Int?
   occupation      String?
   dualStudyProgram String?

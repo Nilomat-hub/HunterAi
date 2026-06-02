@@ -10,50 +10,55 @@ export async function generateApplicationMessage(user: User, listing: Listing) {
     return fallbackMessage(user, listing);
   }
 
-  const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.7,
-    messages: [
-      {
-        role: "system",
-        content:
-          "Du schreibst kurze, natürliche und professionelle Wohnungsbewerbungen auf Deutsch. Zitiere den Inseratstitel nicht wörtlich. Nutze nur robuste Fakten wie Stadtteil, Lage, Größe, Zimmer und Ausstattung. Keine Floskeln, kein übertriebener Ton, maximal 170 Wörter."
-      },
-      {
-        role: "user",
-        content: JSON.stringify({
-          profil: {
-            vorname: user.firstName,
-            nachname: user.lastName,
-            alter: user.age,
-            beruf: user.occupation,
-            studiumOderAusbildung: user.dualStudyProgram,
-            arbeitgeber: user.employer,
-            monatlichVerfuegbar: user.monthlyAvailableBudget ?? user.netIncome,
-            buergschaftMoeglich: user.guarantorAvailable,
-            haushaltsgroesse: user.householdSize,
-            haustiere: user.pets,
-            einzugsdatum: user.moveInDate,
-            aktuelleSituation: user.currentHousingSituation,
-            umzugsgrund: user.moveReason,
-            lagevorteil: user.locationBenefit,
-            beschreibung: user.personalBio
-          },
-          inserat: {
-            titelNurAlsKontext: safeListingTitle(listing.title),
-            preis: listing.price,
-            groesse: listing.size,
-            zimmer: listing.rooms,
-            adresse: listing.address,
-            stadtteil: listing.district,
-            beschreibung: listing.description
-          }
-        })
-      }
-    ]
-  });
+  try {
+    const response = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      temperature: 0.7,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Du schreibst kurze, natürliche und professionelle Wohnungsbewerbungen auf Deutsch. Zitiere den Inseratstitel nicht wörtlich. Nutze nur robuste Fakten wie Stadtteil, Lage, Größe, Zimmer und Ausstattung. Keine Floskeln, kein übertriebener Ton, maximal 170 Wörter."
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            profil: {
+              vorname: user.firstName,
+              nachname: user.lastName,
+              alter: user.age,
+              beruf: user.occupation,
+              studiumOderAusbildung: user.dualStudyProgram,
+              arbeitgeber: user.employer,
+              monatlichVerfuegbar: user.monthlyAvailableBudget ?? user.netIncome,
+              buergschaftMoeglich: user.guarantorAvailable,
+              haushaltsgroesse: user.householdSize,
+              haustiere: user.pets,
+              einzugsdatum: user.moveInDate,
+              aktuelleSituation: user.currentHousingSituation,
+              umzugsgrund: user.moveReason,
+              lagevorteil: user.locationBenefit,
+              beschreibung: user.personalBio
+            },
+            inserat: {
+              titelNurAlsKontext: safeListingTitle(listing.title),
+              preis: listing.price,
+              groesse: listing.size,
+              zimmer: listing.rooms,
+              adresse: listing.address,
+              stadtteil: listing.district,
+              beschreibung: listing.description
+            }
+          })
+        }
+      ]
+    });
 
-  return response.choices[0]?.message.content?.trim() || fallbackMessage(user, listing);
+    return response.choices[0]?.message.content?.trim() || fallbackMessage(user, listing);
+  } catch (error) {
+    console.warn("OpenAI application generation failed. Falling back to local template.", error);
+    return fallbackMessage(user, listing);
+  }
 }
 
 export function fallbackMessage(user: User, listing: Listing) {

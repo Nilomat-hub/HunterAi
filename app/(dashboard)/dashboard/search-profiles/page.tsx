@@ -1,14 +1,21 @@
 import type { InputHTMLAttributes } from "react";
 import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { createSearchProfile } from "@/lib/actions/search-profiles";
 import { requireUserId } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
-export default async function SearchProfilesPage() {
+type SearchProfilesPageProps = {
+  searchParams?: Promise<{
+    error?: string;
+  }>;
+};
+
+export default async function SearchProfilesPage({ searchParams }: SearchProfilesPageProps) {
   const userId = await requireUserId();
+  const params = await searchParams;
   const profiles = await prisma.searchProfile.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" }
@@ -22,6 +29,11 @@ export default async function SearchProfilesPage() {
         </CardHeader>
         <CardContent>
           <form action={createSearchProfile} className="space-y-4">
+            {params?.error === "validation" ? (
+              <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                Bitte prüfe die Pflichtfelder und Zahlenwerte.
+              </p>
+            ) : null}
             <Field name="name" label="Name" />
             <Field name="city" label="Stadt" />
             <Field name="districts" label="Bezirke" placeholder="Kommagetrennt" />
@@ -36,10 +48,10 @@ export default async function SearchProfilesPage() {
               <input name="petsAllowed" type="checkbox" className="h-4 w-4" />
               Haustiere erforderlich
             </label>
-            <Button>
+            <SubmitButton pendingLabel="Speichert">
               <Plus className="h-4 w-4" />
               Speichern
-            </Button>
+            </SubmitButton>
           </form>
         </CardContent>
       </Card>

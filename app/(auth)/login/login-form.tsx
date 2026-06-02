@@ -25,14 +25,15 @@ export function LoginForm() {
       password: formData.get("password"),
       redirect: false,
       callbackUrl: searchParams.get("callbackUrl") || "/dashboard"
-    });
-    setLoading(false);
+    }).catch(() => null);
 
-    if (result?.error) {
+    if (!result || result.error) {
+      setLoading(false);
       setError("Login fehlgeschlagen.");
       return;
     }
 
+    setLoading(false);
     router.push(result?.url || "/dashboard");
     router.refresh();
   }
@@ -43,7 +44,7 @@ export function LoginForm() {
         <CardTitle>Apartment Hunter AI</CardTitle>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" onSubmit={onSubmit}>
+        <form className="space-y-4" method="post" onSubmit={onSubmit}>
           <div className="space-y-2">
             <Label htmlFor="email">E-Mail</Label>
             <Input id="email" name="email" type="email" autoComplete="email" required />
@@ -53,7 +54,7 @@ export function LoginForm() {
             <Input id="password" name="password" type="password" autoComplete="current-password" required />
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <Button className="w-full" disabled={loading}>
+          <Button className="w-full" type="submit" disabled={loading}>
             <LogIn className="h-4 w-4" />
             {loading ? "Anmeldung läuft" : "Einloggen"}
           </Button>

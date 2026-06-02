@@ -1,8 +1,6 @@
 name: Apartment Hunter Scheduler
 
 on:
-  schedule:
-    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -15,6 +13,6 @@ jobs:
     steps:
       - name: Trigger scheduler endpoint
         run: |
-          curl --fail --request POST \
-            --header "Authorization: Bearer ${{ secrets.SCHEDULER_SECRET }}" \
+          curl --fail --request GET \
+            --header "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.APP_URL }}/api/scheduler/run"

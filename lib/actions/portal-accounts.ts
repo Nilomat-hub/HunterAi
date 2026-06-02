@@ -2,6 +2,7 @@
 
 import { Portal } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUserId } from "@/lib/auth/session";
 import { encryptSecret } from "@/lib/crypto/secrets";
@@ -15,24 +16,28 @@ const schema = z.object({
 
 export async function savePortalAccount(formData: FormData) {
   const userId = await requireUserId();
-  const parsed = schema.parse(Object.fromEntries(formData));
+  const parsed = schema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    redirect("/dashboard/portal-accounts?error=validation");
+  }
 
   await prisma.portalAccount.upsert({
     where: {
       userId_portal: {
         userId,
-        portal: parsed.portal
+        portal: parsed.data.portal
       }
     },
     create: {
       userId,
-      portal: parsed.portal,
-      usernameEncrypted: encryptSecret(parsed.username),
-      passwordEncrypted: encryptSecret(parsed.password)
+      portal: parsed.data.portal,
+      usernameEncrypted: encryptSecret(parsed.data.username),
+      passwordEncrypted: encryptSecret(parsed.data.password)
     },
     update: {
-      usernameEncrypted: encryptSecret(parsed.username),
-      passwordEncrypted: encryptSecret(parsed.password)
+      usernameEncrypted: encryptSecret(parsed.data.username),
+      passwordEncrypted: encryptSecret(parsed.data.password)
     }
   });
 

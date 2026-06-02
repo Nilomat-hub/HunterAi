@@ -20,7 +20,14 @@ type ApplicationWithListing = Application & {
 
 export function ApplicationCard({ application }: { application: ApplicationWithListing }) {
   const message = application.editedMessage ?? application.message;
-  const disabled = application.status === "SENT" || application.status === "IGNORED";
+  const busy = application.status === "PREPARING";
+  const final = application.status === "SENT" || application.status === "IGNORED";
+  const editable = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "READY_TO_SUBMIT", "FAILED"].includes(application.status);
+  const canApprove = editable && !busy && !final;
+  const canPrepare = application.status === "APPROVED" && Boolean(application.listing.applicationUrl);
+  const canMarkSent = ["APPROVED", "READY_TO_SUBMIT"].includes(application.status);
+  const canIgnore = !busy && !final;
+  const sendsOnApprove = application.listing.portal === "IMMOBILIE1" && !application.listing.applicationUrl;
 
   return (
     <Card>
@@ -31,7 +38,15 @@ export function ApplicationCard({ application }: { application: ApplicationWithL
             <span>{formatCurrency(application.listing.price)}</span>
             <span>{application.listing.size ? `${application.listing.size} m²` : "Größe offen"}</span>
             <span>{application.listing.rooms ? `${application.listing.rooms} Zimmer` : "Zimmer offen"}</span>
-            <a className="inline-flex items-center gap-1 text-primary" href={application.listing.url} target="_blank">
+            <span className="font-medium text-foreground">
+              Score {application.listing.score} ({application.listing.scoreLabel})
+            </span>
+            <a
+              className="inline-flex items-center gap-1 text-primary"
+              href={application.listing.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Inserat
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
@@ -40,6 +55,7 @@ export function ApplicationCard({ application }: { application: ApplicationWithL
                 className="inline-flex items-center gap-1 text-primary"
                 href={application.listing.applicationUrl}
                 target="_blank"
+                rel="noopener noreferrer"
               >
                 Bewerbungslink
                 <ExternalLink className="h-3.5 w-3.5" />
@@ -50,13 +66,35 @@ export function ApplicationCard({ application }: { application: ApplicationWithL
         <Badge>{applicationStatusLabels[application.status]}</Badge>
       </CardHeader>
       <CardContent className="space-y-4">
-        <form action={saveApplicationMessage} className="space-y-3">
+        <form action={saveApplicationMessage} className="space-y-4">
           <input type="hidden" name="applicationId" value={application.id} />
-          <Textarea name="message" defaultValue={message} disabled={disabled} className="min-h-56 leading-6" />
+          <Textarea name="message" defaultValue={message} disabled={!editable} className="min-h-56 leading-6" />
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" disabled={disabled}>
+            <Button variant="secondary" disabled={!editable}>
               <Save className="h-4 w-4" />
               Speichern
+            </Button>
+
+            <Button formAction={approveApplication} disabled={!canApprove}>
+              <Check className="h-4 w-4" />
+              {sendsOnApprove ? "Freigeben & abschicken" : "Freigeben"}
+            </Button>
+
+            {application.listing.applicationUrl ? (
+              <Button formAction={prepareExternalApplication} variant="secondary" disabled={!canPrepare}>
+                <ExternalLink className="h-4 w-4" />
+                Bewerbung vorbereiten
+              </Button>
+            ) : null}
+
+            <Button formAction={markApplicationSent} variant="secondary" disabled={!canMarkSent}>
+              <Send className="h-4 w-4" />
+              Als versendet markieren
+            </Button>
+
+            <Button formAction={ignoreApplication} variant="ghost" disabled={!canIgnore}>
+              <X className="h-4 w-4" />
+              Ignorieren
             </Button>
           </div>
         </form>
@@ -72,42 +110,6 @@ export function ApplicationCard({ application }: { application: ApplicationWithL
             {application.externalStatus}
           </p>
         ) : null}
-
-        <div className="flex flex-wrap gap-2">
-          <form action={approveApplication}>
-            <input type="hidden" name="applicationId" value={application.id} />
-            <Button disabled={disabled || application.status === "APPROVED"}>
-              <Check className="h-4 w-4" />
-              Freigeben
-            </Button>
-          </form>
-
-          {application.listing.applicationUrl ? (
-            <form action={prepareExternalApplication}>
-              <input type="hidden" name="applicationId" value={application.id} />
-              <Button variant="secondary" disabled={application.status !== "APPROVED"}>
-                <ExternalLink className="h-4 w-4" />
-                Bewerbung vorbereiten
-              </Button>
-            </form>
-          ) : null}
-
-          <form action={markApplicationSent}>
-            <input type="hidden" name="applicationId" value={application.id} />
-            <Button variant="secondary" disabled={!["APPROVED", "READY_TO_SUBMIT"].includes(application.status)}>
-              <Send className="h-4 w-4" />
-              Als versendet markieren
-            </Button>
-          </form>
-
-          <form action={ignoreApplication}>
-            <input type="hidden" name="applicationId" value={application.id} />
-            <Button variant="ghost" disabled={disabled}>
-              <X className="h-4 w-4" />
-              Ignorieren
-            </Button>
-          </form>
-        </div>
       </CardContent>
     </Card>
   );

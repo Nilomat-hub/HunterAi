@@ -9,6 +9,7 @@ node_modules
 .next-build
 .next-app
 .next-local
+.next-dev
 .vercel
 coverage
 .env

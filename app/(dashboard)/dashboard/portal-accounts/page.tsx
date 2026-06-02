@@ -1,8 +1,8 @@
 import { Portal } from "@prisma/client";
 import { KeyRound } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { savePortalAccount } from "@/lib/actions/portal-accounts";
 import { requireUserId } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
@@ -16,13 +16,25 @@ const portalLabels: Record<Portal, string> = {
   IMMOMIO: "Immomio"
 };
 
-export default async function PortalAccountsPage() {
+type PortalAccountsPageProps = {
+  searchParams?: Promise<{
+    error?: string;
+  }>;
+};
+
+export default async function PortalAccountsPage({ searchParams }: PortalAccountsPageProps) {
   const userId = await requireUserId();
+  const params = await searchParams;
   const accounts = await prisma.portalAccount.findMany({ where: { userId } });
   const connected = new Set(accounts.map((account) => account.portal));
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      {params?.error === "validation" ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive md:col-span-2">
+          Bitte Portal, Benutzername und Passwort prüfen.
+        </div>
+      ) : null}
       {Object.values(Portal).map((portal) => (
         <Card key={portal}>
           <CardHeader>
@@ -44,10 +56,10 @@ export default async function PortalAccountsPage() {
                 <Label htmlFor={`${portal}-password`}>Passwort</Label>
                 <Input id={`${portal}-password`} name="password" type="password" autoComplete="current-password" required />
               </div>
-              <Button>
+              <SubmitButton pendingLabel="Speichert">
                 <KeyRound className="h-4 w-4" />
                 Zugang speichern
-              </Button>
+              </SubmitButton>
             </form>
           </CardContent>
         </Card>

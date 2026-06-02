@@ -33,7 +33,11 @@ async function main() {
 
   const updatedUser = await prisma.user.update({
     where: { id: user.id },
-    data: defaultProfile
+    data: {
+      ...defaultProfile,
+      contactEmail: user.contactEmail ?? user.email,
+      salutation: user.salutation ?? "Herr"
+    }
   });
 
   const profile = await prisma.searchProfile.upsert({

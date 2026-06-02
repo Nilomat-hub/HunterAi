@@ -1,14 +1,15 @@
 import type { InputHTMLAttributes } from "react";
 import { Save } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label, Textarea } from "@/components/ui/input";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { saveProfile, saveSettings } from "@/lib/actions/settings";
 import { requireUserId } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
 type SettingsPageProps = {
   searchParams?: Promise<{
+    error?: string;
     saved?: string;
   }>;
 };
@@ -35,6 +36,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           {savedMessage}
         </div>
       ) : null}
+      {params?.error ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+          Bitte prüfe die eingegebenen Werte.
+        </div>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-2">
       <Card>
@@ -46,6 +52,23 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             <div className="grid grid-cols-2 gap-3">
               <Field name="firstName" label="Vorname" defaultValue={user.firstName ?? ""} />
               <Field name="lastName" label="Nachname" defaultValue={user.lastName ?? ""} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field name="contactEmail" label="Kontakt-E-Mail" type="email" defaultValue={user.contactEmail ?? ""} />
+              <Field name="phone" label="Telefon" defaultValue={user.phone ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="salutation">Anrede</Label>
+              <select
+                id="salutation"
+                name="salutation"
+                defaultValue={user.salutation ?? "Herr"}
+                className="h-10 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="Herr">Herr</option>
+                <option value="Frau">Frau</option>
+                <option value="Divers">Divers</option>
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field name="age" label="Alter" type="number" defaultValue={user.age ?? ""} />
@@ -92,10 +115,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               <Label htmlFor="personalBio">Persönliche Beschreibung</Label>
               <Textarea id="personalBio" name="personalBio" defaultValue={user.personalBio ?? ""} />
             </div>
-            <Button>
+            <SubmitButton pendingLabel="Speichert">
               <Save className="h-4 w-4" />
               Profil speichern
-            </Button>
+            </SubmitButton>
           </form>
         </CardContent>
       </Card>
@@ -132,10 +155,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               type="number"
               defaultValue={settings?.maxPerDay ?? 50}
             />
-            <Button>
+            <SubmitButton pendingLabel="Speichert">
               <Save className="h-4 w-4" />
               Einstellungen speichern
-            </Button>
+            </SubmitButton>
           </form>
         </CardContent>
       </Card>

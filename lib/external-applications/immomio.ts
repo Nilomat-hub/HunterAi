@@ -8,10 +8,11 @@ import { decryptSecret } from "@/lib/crypto/secrets";
 type ImmomioPreparationInput = {
   application: Application & { listing: Listing };
   account?: PortalAccount | null;
+  submit?: boolean;
 };
 
 export type ImmomioPreparationResult = {
-  status: "LOGIN_REQUIRED" | "READY_FOR_MANUAL_REVIEW" | "FAILED";
+  status: "LOGIN_REQUIRED" | "READY_FOR_MANUAL_REVIEW" | "SUBMITTED" | "FAILED";
   note: string;
   url?: string;
   fields?: Array<{
@@ -21,7 +22,7 @@ export type ImmomioPreparationResult = {
   }>;
 };
 
-export async function prepareImmomioApplication({ application, account }: ImmomioPreparationInput) {
+export async function prepareImmomioApplication({ application, account, submit = false }: ImmomioPreparationInput) {
   const applicationUrl = application.listing.applicationUrl;
   if (!applicationUrl) {
     return {
@@ -53,6 +54,26 @@ export async function prepareImmomioApplication({ application, account }: Immomi
           fields: await visibleFields(page)
         };
       }
+
+      if (submit) {
+        const submitted = await clickFinalApply(page);
+        if (submitted) {
+          return {
+            status: "SUBMITTED",
+            note: "Bewerbung wurde über Immomio abgeschickt.",
+            url: page.url(),
+            fields: await visibleFields(page)
+          };
+        }
+
+        return {
+          status: "FAILED",
+          note:
+            "Immomio-Login hat funktioniert, aber der finale Bewerben-Button wurde nicht eindeutig gefunden. Bitte manuell prüfen.",
+          url: page.url(),
+          fields: await visibleFields(page)
+        };
+      }
     } else {
       await clickApply(page);
       await clickLogin(page);
@@ -66,7 +87,7 @@ export async function prepareImmomioApplication({ application, account }: Immomi
 
     return {
       status: "READY_FOR_MANUAL_REVIEW",
-      note: "Immomio wurde geöffnet. Der nächste sichere Schritt ist das Ausfüllen bis zur Zusammenfassung ohne finalen Versand.",
+      note: "Immomio wurde geöffnet und der Login wurde abgeschlossen. Die Bewerbung wurde noch nicht abgeschickt.",
       url: page.url(),
       fields: await visibleFields(page)
     };
@@ -87,6 +108,28 @@ async function clickApply(page: Page) {
     await apply.click({ timeout: 10000 }).catch(() => undefined);
     await page.waitForTimeout(1000);
   }
+}
+
+async function clickFinalApply(page: Page) {
+  await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
+  await page.waitForTimeout(1500);
+
+  const buttons = [
+    page.getByRole("button", { name: /^bewerben$/i }),
+    page.getByRole("button", { name: /^jetzt bewerben$/i }),
+    page.getByText(/^bewerben$/i)
+  ];
+
+  for (const button of buttons) {
+    if ((await button.count()) > 0) {
+      await button.first().click({ timeout: 10000 });
+      await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
+      await page.waitForTimeout(2000);
+      return true;
+    }
+  }
+
+  return false;
 }
 
 async function clickLogin(page: Page) {

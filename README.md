@@ -10,7 +10,7 @@ Private Single-User-Webanwendung für Wohnungssuche, Inseratüberwachung, KI-Ans
 - Playwright für Inserat-Extraktion und spätere Portal-Automation
 - OpenAI für deutsche Anschreiben
 - Telegram Bot API für Benachrichtigungen und Freigabe
-- Externer Scheduler über `POST /api/scheduler/run`
+- Vercel Cron Scheduler über `GET /api/scheduler/run`
 
 Die Scheduler-Route ist absichtlich unabhängig vom Anbieter. Für den Start ist GitHub Actions alle 10 Minuten vorbereitet. Später kann derselbe Endpoint von Upstash QStash, cron-job.org oder einem Worker aufgerufen werden.
 
@@ -36,7 +36,7 @@ npm run setup:env
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-Den Wert für `ENCRYPTION_KEY` verwenden. Für `NEXTAUTH_SECRET` und `SCHEDULER_SECRET` ebenfalls starke Zufallswerte nutzen.
+Den Wert für `ENCRYPTION_KEY` verwenden. Für `NEXTAUTH_SECRET` und `CRON_SECRET` ebenfalls starke Zufallswerte nutzen.
 
 4. Datenbank einrichten.
 
@@ -85,16 +85,15 @@ Ja, BotFather ist der richtige Ansprechpartner.
 
 Für Inline-Buttons später den Webhook auf `/api/telegram/webhook` setzen.
 
-## GitHub Actions Scheduler
+## Vercel Cron Scheduler
 
-In GitHub Repository Secrets setzen:
+Der Scheduler wird über `vercel.json` alle 30 Minuten von Vercel Cron aufgerufen.
 
-- `APP_URL`, zum Beispiel `https://deine-app.vercel.app`
-- `SCHEDULER_SECRET`, identisch mit der Vercel Environment Variable
+In Vercel setzen:
 
-Der Workflow `.github/workflows/scheduler.yml` ruft alle 10 Minuten `POST /api/scheduler/run` auf.
+- `CRON_SECRET`
 
-Weitere Push- und Vercel-Hinweise stehen in `GITHUB_VERCEL_SETUP.md`.
+Der Endpoint erwartet `Authorization: Bearer <CRON_SECRET>`. Der GitHub Workflow bleibt nur als manueller Fallback erhalten.
 
 ## Vercel
 
@@ -104,12 +103,14 @@ In Vercel Environment Variables setzen:
 - `NEXTAUTH_URL`
 - `NEXTAUTH_SECRET`
 - `OPENAI_API_KEY`
+- `OPENAI_MODEL`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
-- `SCHEDULER_SECRET`
+- `CRON_SECRET`
 - `ENCRYPTION_KEY`
 - `INITIAL_USER_EMAIL`
 - `INITIAL_USER_PASSWORD`
+- `APP_URL`
 
 Build Command:
 
@@ -183,6 +184,7 @@ Enthalten:
 - Bewerbungsfreigabe im Dashboard: bearbeiten, freigeben, ignorieren, als versendet markieren
 - Externe Bewerbungslinks: Immomio-Links erkennen, speichern und Vorbereitung bis zum Login/Review-Status starten
 - Scheduler-Endpoint mit Bearer Token
-- GitHub-Actions-Scheduler
+- Vercel-Cron-Scheduler
+- Auto-Modus Dry-Run: protokolliert geeignete Treffer, sendet aber nicht automatisch
 
 Die Portal-Suche ist als Adapter-Schicht vorbereitet. Die stabile Suchautomation sollte portalweise erweitert werden, weil jedes Portal andere Login-, Cookie-, Captcha- und DOM-Eigenheiten hat.
