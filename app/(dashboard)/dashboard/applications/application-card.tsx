@@ -77,7 +77,7 @@ export function ApplicationCard({ application }: { application: ApplicationWithL
 
             <Button formAction={approveApplication} disabled={!canApprove}>
               <Check className="h-4 w-4" />
-              {sendsOnApprove ? "Freigeben & abschicken" : "Freigeben"}
+              {sendsOnApprove ? "Manuell freigeben & abschicken" : "Freigeben"}
             </Button>
 
             {application.listing.applicationUrl ? (

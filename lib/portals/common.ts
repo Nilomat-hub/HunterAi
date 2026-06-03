@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
+import { extractContactPerson, isUnavailableListingPage, looksLikeListingPage } from "@/lib/portals/heuristics";
 import type { ExtractedListing } from "@/lib/portals/types";
 
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
@@ -16,10 +17,7 @@ type BrowserListingData = {
 };
 
 export async function extractGenericListing(url: string, portal: ExtractedListing["portal"]) {
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: getLocalChromiumPath()
-  });
+  const browser = await launchChromium("Generische Portalextraktion");
   const page = await browser.newPage({
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36"
@@ -72,6 +70,10 @@ export async function extractGenericListing(url: string, portal: ExtractedListin
 
     const structured = parseJsonLd(data.jsonLd);
     const combinedText = normalizeWhitespace(`${data.title} ${data.description} ${data.mainText ?? ""} ${data.allText}`);
+    if (isUnavailableListingPage(combinedText) || !looksLikeListingPage(data)) {
+      throw new Error("Dieses Inserat ist nicht mehr verfuegbar oder keine gueltige Inseratsseite.");
+    }
+
     const rawTitle = firstString(structured.name, data.title) || "Unbenanntes Inserat";
     const titleQuality = getTitleQuality(rawTitle);
     const title = titleQuality.usable ? rawTitle : "Wohnungsinserat";
@@ -125,41 +127,6 @@ function extractListingDetails(text: string, links: Array<{ text: string; href: 
     contactHints: detectContactHints(text, links),
     contactPerson: extractContactPerson(text)
   };
-}
-
-function extractContactPerson(text: string) {
-  const normalized = normalizeWhitespace(text);
-  const patterns = [
-    /\b(Frau|Herr)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+){0,3})\b/,
-    /\bAnsprechpartner(?:in)?[:\s]+(Frau|Herr)?\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+){0,3})\b/i,
-    /\bKontakt(?:person)?[:\s]+(Frau|Herr)?\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'-]+){0,3})\b/i
-  ];
-
-  for (const pattern of patterns) {
-    const match = normalized.match(pattern);
-    if (!match) continue;
-
-    const salutation = match[1]?.trim();
-    const name = cleanContactName(match[2]);
-    if (name && isPlausibleContactName(name)) {
-      return { salutation, name };
-    }
-  }
-
-  return undefined;
-}
-
-function cleanContactName(value?: string) {
-  if (!value) return undefined;
-  return value
-    .replace(/\b(?:Wentzel\s+Dr|Vertriebs|Immobilien|GmbH|AG|KG|Details|Anbieter|Kontaktieren)\b.*$/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isPlausibleContactName(name: string) {
-  const blocked = ["Immobilien", "Vertrieb", "GmbH", "Details", "Anbieter", "Kontaktieren"];
-  return name.length <= 80 && !blocked.some((word) => name.includes(word));
 }
 
 function detectFeatures(text: string) {
@@ -223,6 +190,26 @@ function getLocalChromiumPath() {
   if (fs.existsSync(local)) return local;
 
   return undefined;
+}
+
+async function launchChromium(context: string) {
+  try {
+    return await chromium.launch({
+      headless: true,
+      executablePath: getLocalChromiumPath()
+    });
+  } catch (error) {
+    const message = sanitizeChromiumLaunchError(error);
+    throw new Error(
+      `${context}: Chromium konnte nicht gestartet werden. Playwright auf Vercel ist nicht automatisch garantiert; pruefe Browser-Binary, Sandbox, Speicher, Laufzeit oder PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH. Ursache: ${message}`
+    );
+  }
+}
+
+function sanitizeChromiumLaunchError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Unbekannter Chromium-Startfehler";
+  const configured = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+  return configured ? message.split(configured).join("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH") : message;
 }
 
 function parseJsonLd(items: string[]) {

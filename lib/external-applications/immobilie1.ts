@@ -3,6 +3,7 @@ import path from "node:path";
 import { chromium } from "playwright";
 import type { Page } from "playwright";
 import type { Application, Listing, User } from "@prisma/client";
+import { validateDirectImmobilie1SendInput } from "@/lib/actions/application-safety";
 
 type Immobilie1ContactInput = {
   application: Application & { listing: Listing };
@@ -16,18 +17,32 @@ export type Immobilie1ContactResult = {
 };
 
 export async function submitImmobilie1ContactApplication({ application, user }: Immobilie1ContactInput) {
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: getLocalChromiumPath()
+  const message = application.editedMessage ?? application.message;
+  const validation = validateDirectImmobilie1SendInput({
+    firstName: user.firstName,
+    lastName: user.lastName,
+    contactEmail: user.contactEmail,
+    loginEmail: user.email,
+    salutation: user.salutation,
+    message
   });
-  const page = await browser.newPage({ viewport: { width: 1365, height: 1200 } });
+  if (!validation.ok) {
+    return {
+      status: "FAILED",
+      note: validation.reasons.join(" ")
+    } satisfies Immobilie1ContactResult;
+  }
 
+  let browser: Awaited<ReturnType<typeof launchChromium>> | undefined;
+  let page: Page | undefined;
   try {
+    browser = await launchChromium("Immobilie1-Kontaktformular");
+    page = await browser.newPage({ viewport: { width: 1365, height: 1200 } });
     await page.goto(application.listing.url, { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => undefined);
     await acceptCookies(page);
     await clickContact(page);
-    await fillContactForm(page, application, user);
+    await fillContactForm(page, validation.values, user.phone);
     await page.getByRole("button", { name: /^anfrage senden$/i }).click({ timeout: 10000 });
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
     await page.waitForTimeout(3000);
@@ -50,10 +65,10 @@ export async function submitImmobilie1ContactApplication({ application, user }: 
     return {
       status: "FAILED",
       note: error instanceof Error ? error.message : "Immobilie1-Kontaktformular konnte nicht abgeschickt werden.",
-      url: page.url()
+      url: page?.url()
     } satisfies Immobilie1ContactResult;
   } finally {
-    await browser.close();
+    await browser?.close();
   }
 }
 
@@ -77,18 +92,23 @@ async function clickContact(page: Page) {
   await page.waitForTimeout(1000);
 }
 
-async function fillContactForm(page: Page, application: Application, user: User) {
-  const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
-  const contactEmail = user.contactEmail || user.email;
-  const message = application.editedMessage ?? application.message;
-
-  await chooseSalutation(page, user.salutation || "Herr");
-  await page.locator("#contact_name").fill(name, { timeout: 5000 });
-  await page.locator("#contact_email").fill(contactEmail, { timeout: 5000 });
-  if (user.phone) {
-    await page.locator("#contact_phone").fill(user.phone, { timeout: 5000 }).catch(() => undefined);
+async function fillContactForm(
+  page: Page,
+  values: {
+    fullName: string;
+    contactEmail: string;
+    salutation: string;
+    message: string;
+  },
+  phone?: string | null
+) {
+  await chooseSalutation(page, values.salutation);
+  await page.locator("#contact_name").fill(values.fullName, { timeout: 5000 });
+  await page.locator("#contact_email").fill(values.contactEmail, { timeout: 5000 });
+  if (phone) {
+    await page.locator("#contact_phone").fill(phone, { timeout: 5000 }).catch(() => undefined);
   }
-  await page.locator("#contact_message").fill(message, { timeout: 5000 });
+  await page.locator("#contact_message").fill(values.message, { timeout: 5000 });
 }
 
 async function chooseSalutation(page: Page, salutation: string) {
@@ -121,4 +141,17 @@ function getLocalChromiumPath() {
   if (fs.existsSync(local)) return local;
 
   return undefined;
+}
+
+async function launchChromium(context: string) {
+  try {
+    return await chromium.launch({
+      headless: true,
+      executablePath: getLocalChromiumPath()
+    });
+  } catch {
+    throw new Error(
+      `${context}: Chromium konnte nicht gestartet werden. Chromium availability on Vercel is not guaranteed; set PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH or install Playwright Chromium for this runtime.`
+    );
+  }
 }

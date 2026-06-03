@@ -10,29 +10,86 @@ import { canSendApplication } from "@/lib/rate-limit/applications";
 
 const emailHints = ["besser unter", "bitte per mail", "kontakt per e-mail", "kontakt per email"];
 
+type PersistListingAction = "created" | "updated" | "skipped";
+
+type PersistListingResult = {
+  listing: Awaited<ReturnType<typeof prisma.listing.findUniqueOrThrow>>;
+  action: PersistListingAction;
+};
+
+export type ScheduledScanError = {
+  userId: string;
+  profileId?: string;
+  adapter?: string;
+  listingUrl?: string;
+  message: string;
+};
+
+export type ScheduledScanSummary = {
+  userId: string;
+  processed: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: ScheduledScanError[];
+};
+
 export async function processManualListing(userId: string, url: string) {
   const adapter = getAdapterForUrl(url);
   const extracted = await adapter.extractListing(url);
   const profile = await findBestProfileForListing(userId, extracted);
-  return persistListing(userId, extracted, profile);
+  const result = await persistListing(userId, extracted, profile);
+  return result.listing;
 }
 
-export async function runScheduledScan(userId: string) {
+export async function runScheduledScan(userId: string): Promise<ScheduledScanSummary> {
+  const summary: ScheduledScanSummary = {
+    userId,
+    processed: 0,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    errors: []
+  };
+
   const profiles = await prisma.searchProfile.findMany({
     where: { userId, active: true }
   });
 
-  const results = [];
   for (const profile of profiles) {
     for (const adapter of portalAdapters) {
-      const extractedListings = await adapter.searchListings?.(profile.id);
+      let extractedListings: PortalListing[] = [];
+      try {
+        extractedListings = (await adapter.searchListings?.(profile.id)) ?? [];
+      } catch (error) {
+        await recordScanError(summary, {
+          userId,
+          profileId: profile.id,
+          adapter: adapter.portal,
+          message: safeErrorMessage(error)
+        });
+        continue;
+      }
+
       for (const extracted of extractedListings ?? []) {
-        results.push(await persistListing(userId, extracted, profile));
+        summary.processed += 1;
+        try {
+          const result = await persistListing(userId, extracted, profile);
+          summary[result.action] += 1;
+        } catch (error) {
+          await recordScanError(summary, {
+            userId,
+            profileId: profile.id,
+            adapter: adapter.portal,
+            listingUrl: extracted.url,
+            message: safeErrorMessage(error)
+          });
+        }
       }
     }
   }
 
-  return results;
+  return summary;
 }
 
 async function findBestProfileForListing(userId: string, extracted: PortalListing) {
@@ -58,7 +115,45 @@ async function findBestProfileForListing(userId: string, extracted: PortalListin
     .sort((a, b) => b.score - a.score)[0].profile;
 }
 
-export async function persistListing(userId: string, extracted: PortalListing, profile: SearchProfile | null) {
+async function recordScanError(summary: ScheduledScanSummary, error: ScheduledScanError) {
+  summary.errors.push(error);
+  console.error("scheduler.scan_error", error);
+
+  await prisma.telegramLog
+    .create({
+      data: {
+        userId: error.userId,
+        type: "ERROR",
+        message: `Scheduler-Fehler: ${error.message}`,
+        payload: {
+          profileId: error.profileId,
+          adapter: error.adapter,
+          listingUrl: error.listingUrl
+        }
+      }
+    })
+    .catch((logError) => {
+      console.error("scheduler.scan_error_log_failed", {
+        userId: error.userId,
+        message: safeErrorMessage(logError)
+      });
+    });
+}
+
+function safeErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://[redacted]")
+    .replace(/(token|secret|password|key)=([^&\s]+)/gi, "$1=[redacted]")
+    .slice(0, 500);
+}
+
+export async function persistListing(
+  userId: string,
+  extracted: PortalListing,
+  profile: SearchProfile | null
+): Promise<PersistListingResult> {
   const normalizedUrl = normalizeUrl(extracted.url);
   const profileForScoring = profile ?? (await findBestProfileForListing(userId, extracted));
   const existing = await prisma.listing.findUnique({
@@ -66,18 +161,7 @@ export async function persistListing(userId: string, extracted: PortalListing, p
   });
 
   if (existing) {
-    if (extracted.applicationUrl && existing.applicationUrl !== extracted.applicationUrl) {
-      return prisma.listing.update({
-        where: { id: existing.id },
-        data: {
-          applicationUrl: extracted.applicationUrl,
-          contactMethod: "EXTERNAL",
-          rawData: extracted.rawData
-        }
-      });
-    }
-
-    return existing;
+    return handleExistingListing(userId, existing.id, extracted);
   }
 
   const duplicate = await findDuplicate(userId, extracted);
@@ -93,53 +177,184 @@ export async function persistListing(userId: string, extracted: PortalListing, p
   const score = scoreListing(provisional);
   const contactMethod = chooseContactMethod(extracted);
 
-  const listing = await prisma.listing.create({
-    data: {
-      userId,
-      searchProfileId: profileForScoring?.id,
-      portal: extracted.portal,
-      url: extracted.url,
-      normalizedUrl,
-      title: extracted.title,
-      price: extracted.price,
-      size: extracted.size,
-      rooms: extracted.rooms,
-      address: extracted.address,
-      district: extracted.district,
-      provider: extracted.provider,
-      images: extracted.images,
-      description: extracted.description,
-      publishedAt: extracted.publishedAt,
-      score: score.score,
-      scoreLabel: score.label,
-      duplicateOfId: duplicate?.id,
-      status: duplicate ? "DUPLICATE" : "NEW",
-      contactMethod,
-      contactEmail: extracted.contactEmail,
-      applicationUrl: extracted.applicationUrl,
-      rawData: extracted.rawData
+  let listing: Awaited<ReturnType<typeof prisma.listing.create>>;
+  try {
+    listing = await prisma.listing.create({
+      data: {
+        userId,
+        searchProfileId: profileForScoring?.id,
+        portal: extracted.portal,
+        url: extracted.url,
+        normalizedUrl,
+        title: extracted.title,
+        price: extracted.price,
+        size: extracted.size,
+        rooms: extracted.rooms,
+        address: extracted.address,
+        district: extracted.district,
+        provider: extracted.provider,
+        images: extracted.images,
+        description: extracted.description,
+        publishedAt: extracted.publishedAt,
+        score: score.score,
+        scoreLabel: score.label,
+        duplicateOfId: duplicate?.id,
+        status: duplicate ? "DUPLICATE" : "NEW",
+        contactMethod,
+        contactEmail: extracted.contactEmail,
+        applicationUrl: extracted.applicationUrl,
+        rawData: extracted.rawData
+      }
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const raced = await prisma.listing.findUnique({
+        where: { userId_normalizedUrl: { userId, normalizedUrl } }
+      });
+      if (raced) {
+        return handleExistingListing(userId, raced.id, extracted);
+      }
     }
+    throw error;
+  }
+
+  if (duplicate) return { listing, action: "skipped" };
+
+  await ensureListingApplicationAndNotification(userId, listing);
+
+  return { listing, action: "created" };
+}
+
+async function handleExistingListing(
+  userId: string,
+  listingId: string,
+  extracted: PortalListing
+): Promise<PersistListingResult> {
+  const result = await updateExistingListingFromExtraction(listingId, extracted);
+  if (isDuplicateListing(result.listing)) {
+    return result;
+  }
+
+  const ensured = await ensureListingApplicationAndNotification(userId, result.listing);
+  return {
+    listing: ensured.listing,
+    action: result.action === "updated" || ensured.action === "updated" ? "updated" : "skipped"
+  };
+}
+
+async function updateExistingListingFromExtraction(
+  listingId: string,
+  extracted: PortalListing
+): Promise<PersistListingResult> {
+  const existing = await prisma.listing.findUniqueOrThrow({ where: { id: listingId } });
+  const data: Prisma.ListingUpdateInput = {};
+  const applicationUrlChanged = Boolean(extracted.applicationUrl && existing.applicationUrl !== extracted.applicationUrl);
+
+  if (applicationUrlChanged) {
+    data.applicationUrl = extracted.applicationUrl;
+    data.contactMethod = "EXTERNAL";
+  }
+
+  if (extracted.applicationUrl && extracted.rawData && (applicationUrlChanged || !existing.rawData)) {
+    data.rawData = extracted.rawData;
+  }
+
+  if (!Object.keys(data).length) {
+    return { listing: existing, action: "skipped" };
+  }
+
+  const listing = await prisma.listing.update({
+    where: { id: existing.id },
+    data
   });
 
-  if (duplicate) return listing;
+  return { listing, action: "updated" };
+}
+
+async function ensureListingApplicationAndNotification(
+  userId: string,
+  listing: Awaited<ReturnType<typeof prisma.listing.findUniqueOrThrow>>
+): Promise<PersistListingResult> {
+  const application = await ensureListingApplication(userId, listing);
+  const alreadyLogged = await hasListingFoundLog(userId, listing);
+  let changed = application.created;
+  let currentListing = listing;
+
+  if (shouldSendListingNotification(listing, application.created) && !alreadyLogged) {
+    await sendListingFoundTelegram(userId, listing);
+    currentListing = await prisma.listing.update({
+      where: { id: listing.id },
+      data: { status: "NOTIFIED" }
+    });
+    changed = true;
+  } else if (shouldMarkListingNotified(listing) && alreadyLogged) {
+    currentListing = await prisma.listing.update({
+      where: { id: listing.id },
+      data: { status: "NOTIFIED" }
+    });
+    changed = true;
+  }
+
+  if (application.created) {
+    await evaluateAutoApplyDryRun(userId, listing.id, application.id);
+  }
+
+  return { listing: currentListing, action: changed ? "updated" : "skipped" };
+}
+
+async function ensureListingApplication(
+  userId: string,
+  listing: Awaited<ReturnType<typeof prisma.listing.findUniqueOrThrow>>
+) {
+  const existingApplication = await prisma.application.findFirst({
+    where: { userId, listingId: listing.id },
+    select: { id: true }
+  });
+
+  if (existingApplication) {
+    return { id: existingApplication.id, created: false };
+  }
 
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const message = await generateApplicationMessage(user, listing);
-
   const application = await prisma.application.create({
     data: {
       userId,
       listingId: listing.id,
       status: "PENDING_APPROVAL",
       message
-    }
+    },
+    select: { id: true }
   });
 
-  await prisma.listing.update({
-    where: { id: listing.id },
-    data: { status: "NOTIFIED" }
+  return { id: application.id, created: true };
+}
+
+async function hasListingFoundLog(
+  userId: string,
+  listing: Awaited<ReturnType<typeof prisma.listing.findUniqueOrThrow>>
+) {
+  const log = await prisma.telegramLog.findFirst({
+    where: {
+      userId,
+      type: "LISTING_FOUND",
+      OR: [
+        { message: { contains: listing.id } },
+        { message: { contains: listing.url } },
+        { payload: { path: ["listingId"], equals: listing.id } },
+        { payload: { path: ["url"], equals: listing.url } }
+      ]
+    },
+    select: { id: true }
   });
 
+  return Boolean(log);
+}
+
+async function sendListingFoundTelegram(
+  userId: string,
+  listing: Awaited<ReturnType<typeof prisma.listing.findUniqueOrThrow>>
+) {
   await sendTelegramMessage(
     userId,
     [
@@ -155,9 +370,37 @@ export async function persistListing(userId: string, extracted: PortalListing, p
     listingButtons(listing.id)
   );
 
-  await evaluateAutoApplyDryRun(userId, listing.id, application.id);
+  if (!(await hasListingFoundLog(userId, listing))) {
+    throw new Error("Telegram-Benachrichtigung wurde nicht als LISTING_FOUND bestaetigt.");
+  }
+}
 
-  return listing;
+function shouldSendListingNotification(
+  listing: Awaited<ReturnType<typeof prisma.listing.findUniqueOrThrow>>,
+  applicationCreated: boolean
+) {
+  if (["APPLIED", "IGNORED", "DUPLICATE"].includes(listing.status)) {
+    return false;
+  }
+
+  return applicationCreated || shouldMarkListingNotified(listing);
+}
+
+function shouldMarkListingNotified(listing: Awaited<ReturnType<typeof prisma.listing.findUniqueOrThrow>>) {
+  return !["NOTIFIED", "APPLIED", "IGNORED", "DUPLICATE"].includes(listing.status);
+}
+
+function isDuplicateListing(listing: Awaited<ReturnType<typeof prisma.listing.findUniqueOrThrow>>) {
+  return listing.status === "DUPLICATE" || Boolean(listing.duplicateOfId);
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "P2002"
+  );
 }
 
 async function evaluateAutoApplyDryRun(userId: string, listingId: string, applicationId: string) {

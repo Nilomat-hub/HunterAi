@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Portal, type ApplicationStatus } from "@prisma/client";
 import { requireUserId } from "@/lib/auth/session";
+import { validateDirectImmobilie1SendInput } from "@/lib/actions/application-safety";
 import { prisma } from "@/lib/db/prisma";
 import { submitImmobilie1ContactApplication } from "@/lib/external-applications/immobilie1";
 import { prepareImmomioApplication } from "@/lib/external-applications/immomio";
@@ -124,6 +125,7 @@ async function submitImmobilie1Application(
   application: NonNullable<Awaited<ReturnType<typeof getOwnedApplication>>>
 ) {
   if (!approvableStatuses.has(application.status)) return;
+  if (application.listing.portal !== Portal.IMMOBILIE1 || application.listing.applicationUrl) return;
 
   const limit = await canSendApplication(userId);
   if (!limit.allowed) {
@@ -141,72 +143,35 @@ async function submitImmobilie1Application(
     where: { id: application.id },
     data: {
       status: "PREPARING",
-      externalStatus: "Freigegeben. Immobilie1-Bewerbung wird abgeschickt.",
+      externalStatus: "Manuell freigegeben. Immobilie1-Kontaktanfrage wird abgeschickt.",
       errorMessage: null
     }
   });
 
-  if (!application.listing.applicationUrl) {
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const result = await submitImmobilie1ContactApplication({ application, user });
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const message = application.editedMessage ?? application.message;
+  const validation = validateDirectImmobilie1SendInput({
+    firstName: user.firstName,
+    lastName: user.lastName,
+    contactEmail: user.contactEmail,
+    loginEmail: user.email,
+    salutation: user.salutation,
+    message
+  });
 
-    if (result.status === "SUBMITTED") {
-      await prisma.$transaction([
-        prisma.application.update({
-          where: { id: application.id },
-          data: {
-            status: "SENT",
-            sentAt: new Date(),
-            externalStatus: result.note,
-            externalPayload: {
-              url: result.url,
-              status: result.status
-            },
-            lastPreparedAt: new Date(),
-            errorMessage: null
-          }
-        }),
-        prisma.listing.update({
-          where: { id: application.listingId },
-          data: { status: "APPLIED" }
-        }),
-        prisma.telegramLog.create({
-          data: {
-            userId,
-            type: "APPLICATION_SENT",
-            message: "Immobilie1-Kontaktanfrage wurde automatisch abgeschickt.",
-            payload: { applicationId: application.id, listingId: application.listingId, url: result.url }
-          }
-        })
-      ]);
-      return;
-    }
-
+  if (!validation.ok) {
     await prisma.application.update({
       where: { id: application.id },
       data: {
         status: "FAILED",
-        externalStatus: result.note,
-        externalPayload: {
-          url: result.url,
-          status: result.status
-        },
-        lastPreparedAt: new Date(),
-        errorMessage: result.note
+        externalStatus: validation.reasons.join(" "),
+        errorMessage: validation.reasons.join(" ")
       }
     });
     return;
   }
 
-  const account = await prisma.portalAccount.findFirst({
-    where: {
-      userId,
-      portal: { in: [Portal.IMMOMIO, Portal.IMMOBILIE1] }
-    },
-    orderBy: [{ portal: "asc" }]
-  });
-
-  const result = await prepareImmomioApplication({ application, account, submit: true });
+  const result = await submitImmobilie1ContactApplication({ application, user });
 
   if (result.status === "SUBMITTED") {
     await prisma.$transaction([
@@ -218,7 +183,6 @@ async function submitImmobilie1Application(
           externalStatus: result.note,
           externalPayload: {
             url: result.url,
-            fields: result.fields,
             status: result.status
           },
           lastPreparedAt: new Date(),
@@ -233,7 +197,7 @@ async function submitImmobilie1Application(
         data: {
           userId,
           type: "APPLICATION_SENT",
-          message: "Immobilie1-Bewerbung wurde automatisch abgeschickt.",
+          message: "Immobilie1-Kontaktanfrage wurde nach manueller Freigabe abgeschickt.",
           payload: { applicationId: application.id, listingId: application.listingId, url: result.url }
         }
       })
@@ -241,19 +205,17 @@ async function submitImmobilie1Application(
     return;
   }
 
-  const nextStatus = result.status === "FAILED" ? "FAILED" : "APPROVED";
   await prisma.application.update({
     where: { id: application.id },
     data: {
-      status: nextStatus,
+      status: "FAILED",
       externalStatus: result.note,
       externalPayload: {
         url: result.url,
-        fields: result.fields,
         status: result.status
       },
       lastPreparedAt: new Date(),
-      errorMessage: result.status === "FAILED" ? result.note : null
+      errorMessage: result.note
     }
   });
 }

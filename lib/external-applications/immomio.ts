@@ -8,11 +8,10 @@ import { decryptSecret } from "@/lib/crypto/secrets";
 type ImmomioPreparationInput = {
   application: Application & { listing: Listing };
   account?: PortalAccount | null;
-  submit?: boolean;
 };
 
 export type ImmomioPreparationResult = {
-  status: "LOGIN_REQUIRED" | "READY_FOR_MANUAL_REVIEW" | "SUBMITTED" | "FAILED";
+  status: "LOGIN_REQUIRED" | "READY_FOR_MANUAL_REVIEW" | "FAILED";
   note: string;
   url?: string;
   fields?: Array<{
@@ -22,7 +21,7 @@ export type ImmomioPreparationResult = {
   }>;
 };
 
-export async function prepareImmomioApplication({ application, account, submit = false }: ImmomioPreparationInput) {
+export async function prepareImmomioApplication({ application, account }: ImmomioPreparationInput) {
   const applicationUrl = application.listing.applicationUrl;
   if (!applicationUrl) {
     return {
@@ -31,13 +30,11 @@ export async function prepareImmomioApplication({ application, account, submit =
     } satisfies ImmomioPreparationResult;
   }
 
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: getLocalChromiumPath()
-  });
-  const page = await browser.newPage({ viewport: { width: 1365, height: 1200 } });
-
+  let browser: Awaited<ReturnType<typeof launchChromium>> | undefined;
+  let page: Page | undefined;
   try {
+    browser = await launchChromium("Immomio-Vorbereitung");
+    page = await browser.newPage({ viewport: { width: 1365, height: 1200 } });
     await page.goto(applicationUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => undefined);
     await page.getByRole("button", { name: "Alle erlauben" }).click({ timeout: 5000 }).catch(() => undefined);
@@ -55,25 +52,6 @@ export async function prepareImmomioApplication({ application, account, submit =
         };
       }
 
-      if (submit) {
-        const submitted = await clickFinalApply(page);
-        if (submitted) {
-          return {
-            status: "SUBMITTED",
-            note: "Bewerbung wurde über Immomio abgeschickt.",
-            url: page.url(),
-            fields: await visibleFields(page)
-          };
-        }
-
-        return {
-          status: "FAILED",
-          note:
-            "Immomio-Login hat funktioniert, aber der finale Bewerben-Button wurde nicht eindeutig gefunden. Bitte manuell prüfen.",
-          url: page.url(),
-          fields: await visibleFields(page)
-        };
-      }
     } else {
       await clickApply(page);
       await clickLogin(page);
@@ -95,10 +73,10 @@ export async function prepareImmomioApplication({ application, account, submit =
     return {
       status: "FAILED",
       note: error instanceof Error ? error.message : "Immomio-Vorbereitung fehlgeschlagen.",
-      url: page.url()
+      url: page?.url()
     };
   } finally {
-    await browser.close();
+    await browser?.close();
   }
 }
 
@@ -108,28 +86,6 @@ async function clickApply(page: Page) {
     await apply.click({ timeout: 10000 }).catch(() => undefined);
     await page.waitForTimeout(1000);
   }
-}
-
-async function clickFinalApply(page: Page) {
-  await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
-  await page.waitForTimeout(1500);
-
-  const buttons = [
-    page.getByRole("button", { name: /^bewerben$/i }),
-    page.getByRole("button", { name: /^jetzt bewerben$/i }),
-    page.getByText(/^bewerben$/i)
-  ];
-
-  for (const button of buttons) {
-    if ((await button.count()) > 0) {
-      await button.first().click({ timeout: 10000 });
-      await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
-      await page.waitForTimeout(2000);
-      return true;
-    }
-  }
-
-  return false;
 }
 
 async function clickLogin(page: Page) {
@@ -187,4 +143,17 @@ function getLocalChromiumPath() {
   if (fs.existsSync(local)) return local;
 
   return undefined;
+}
+
+async function launchChromium(context: string) {
+  try {
+    return await chromium.launch({
+      headless: true,
+      executablePath: getLocalChromiumPath()
+    });
+  } catch {
+    throw new Error(
+      `${context}: Chromium konnte nicht gestartet werden. Chromium availability on Vercel is not guaranteed; set PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH or install Playwright Chromium for this runtime.`
+    );
+  }
 }
