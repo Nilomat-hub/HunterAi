@@ -7,7 +7,8 @@ const domains: Partial<Record<Portal, string[]>> = {
   IMMOWELT: ["immowelt.de"],
   IMMONET: ["immonet.de"],
   MEINESTADT: ["meinestadt.de"],
-  IMMOBILIE1: ["immobilie1.de"]
+  IMMOBILIE1: ["immobilie1.de"],
+  KLEINANZEIGEN: ["kleinanzeigen.de", "ebay-kleinanzeigen.de"]
 };
 
 function createAdapter(portal: Portal): PortalAdapter {
@@ -33,7 +34,8 @@ export const portalAdapters = [
   createAdapter(Portal.IMMOWELT),
   createAdapter(Portal.IMMONET),
   createAdapter(Portal.MEINESTADT),
-  createAdapter(Portal.IMMOBILIE1)
+  createAdapter(Portal.IMMOBILIE1),
+  createAdapter(Portal.KLEINANZEIGEN)
 ];
 
 export function getAdapterForUrl(url: string) {

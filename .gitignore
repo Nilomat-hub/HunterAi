@@ -16,3 +16,6 @@ coverage
 .env*.local
 playwright/.cache
 *.log
+
+# TypeScript incremental build info
+*.tsbuildinfo

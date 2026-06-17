@@ -13,7 +13,8 @@ const portalLabels: Record<Portal, string> = {
   IMMONET: "Immonet",
   MEINESTADT: "meineStadt",
   IMMOBILIE1: "immobilie1",
-  IMMOMIO: "Immomio"
+  IMMOMIO: "Immomio",
+  KLEINANZEIGEN: "Kleinanzeigen"
 };
 
 type PortalAccountsPageProps = {
