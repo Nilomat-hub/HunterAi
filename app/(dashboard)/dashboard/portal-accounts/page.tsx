@@ -14,7 +14,9 @@ const portalLabels: Record<Portal, string> = {
   MEINESTADT: "meineStadt",
   IMMOBILIE1: "immobilie1",
   IMMOMIO: "Immomio",
-  KLEINANZEIGEN: "Kleinanzeigen"
+  KLEINANZEIGEN: "Kleinanzeigen",
+  OHNE_MAKLER: "Ohne-Makler",
+  KALAYDO: "Kalaydo"
 };
 
 type PortalAccountsPageProps = {

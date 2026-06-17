@@ -15,6 +15,8 @@ enum Portal {
   IMMOBILIE1
   IMMOMIO
   KLEINANZEIGEN
+  OHNE_MAKLER
+  KALAYDO
 }
 
 enum ListingStatus {
