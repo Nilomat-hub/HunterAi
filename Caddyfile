@@ -1,0 +1,6 @@
+# Automatic HTTPS via Let's Encrypt for your domain.
+# DOMAIN and APP_UPSTREAM are injected by docker-compose.prod.yml.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy {$APP_UPSTREAM}
+}

@@ -1,0 +1,20 @@
+.git
+node_modules
+.next
+.next-local
+.next-build
+.next-app
+.next-dev
+.vercel
+.tools
+.npm-cache
+.docker-config
+.playwright-browsers
+.playwright-runtime
+coverage
+*.log
+*.tsbuildinfo
+.env
+.env*.local
+# Large QA screenshots are not needed in the image
+qa-*.png
