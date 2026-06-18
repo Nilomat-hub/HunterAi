@@ -33,6 +33,13 @@ portal adapter (the one portal this repo lacked).
 - Chromium verified launching in-container as `pwuser` without `--no-sandbox`.
 - Listing intake is currently **manual-URL only**: `adapter.searchListings()`
   returns `[]` for every portal. Automatic discovery is unbuilt (Roadmap Phase D).
+- **Verified locally end-to-end (2026-06-18, no server needed):** dev app runs
+  (Postgres container + `npm run dev`), migrations + seed work, NextAuth login
+  works, `/dashboard` is protected. Live extraction of an immobilie1 listing got
+  title/price/size/rooms + rawData.details (rent, features, contactPerson) with
+  no bot block. Gaps on that page: address/district/provider/applicationUrl not
+  detected → contact path fell back to FORM (the working immobilie1 path).
+  Host browser needs `npx playwright install chromium` once.
 
 ## Conventions
 
@@ -44,10 +51,14 @@ portal adapter (the one portal this repo lacked).
   (`ALTER TYPE "Portal" ADD VALUE '…'`) + the `Record<Portal,…>` label maps.
 - Never commit `.env`, real secrets, or `*.tsbuildinfo`.
 
-## Branch state (2026-06-17)
+## Branch state (2026-06-18)
 
 - `main` — baseline.
-- `feat/kleinanzeigen-adapter` — kleinanzeigen.de adapter + `ROADMAP.md`
-  (extraction needs a live test; bot protection).
+- `feat/kleinanzeigen-adapter` — three portal adapters (kleinanzeigen.de,
+  ohne-makler.net, kalaydo.de) + `ROADMAP.md`. Extraction quality still needs a
+  live test on the two new portals. Prefer low-bot-protection portals; high ones
+  (immoscout/kleinanzeigen/wg-gesucht) are unreliable to scrape.
 - `feat/docker-vps` — VPS Docker deployment (verified locally).
 - `docs/claude-memory` — this file.
+
+None of the feature branches are merged into `main` yet.
